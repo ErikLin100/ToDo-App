@@ -2,9 +2,10 @@ import React from "react";
 import moment from "moment/moment";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { auth, db } from "../firebase";
-import { deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, updateDoc } from "firebase/firestore"; // Ensure updateDoc is imported
+import { FaEdit, FaTrash } from "react-icons/fa";
 
-function TodoCard({ id, todoName, time, status }) {
+function TodoCard({ id, title, priority, deadline, comments, time, status, updateTodo }) {
   const [user] = useAuthState(auth);
 
   const deleteTodo = (id) => {
@@ -13,39 +14,53 @@ function TodoCard({ id, todoName, time, status }) {
       .catch((er) => alert(er.message));
   };
 
-  const updateTodo = (id) => {
-    updateDoc(doc(db, `user/${user.uid}/todos/${id}`), {
-      todoName: todoName,
-      status: true,
-      time: serverTimestamp(),
-    })
-      .then(() => alert("Item Updated"))
-      .catch((err) => alert(err.message));
+  const toggleStatus = async () => {
+    try {
+      await updateDoc(doc(db, `user/${user.uid}/todos/${id}`), {
+        status: !status, // Toggle the status
+      });
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const priorityColor = {
+    high: "bg-red-500",
+    medium: "bg-yellow-500",
+    low: "bg-green-500",
   };
 
   return (
-    <div
-      className={`${
-        status ? "bg-green-200" : "bg-red-200"
-      } max-w-lg p-3 rounded-lg mt-3 mx-auto md:ml-5 md:mr-auto`}
-    >
-      <div className="mb-2">
-        <p className="text-xl font-bold break-words">{todoName}</p>
-        <p className="text-xs">{moment(time).format("LT")}</p>
+    <div className={`flex justify-between items-center p-4 border-b ${status ? "bg-green-200" : "bg-white"}`}>
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          checked={status}
+          onChange={toggleStatus}
+          className="mr-3"
+        />
+        <div className="flex items-center">
+          <div className={`w-3 h-3 rounded-full ${priorityColor[priority]} mr-2`} />
+          <div>
+            <p className="text-lg font-bold">{title}</p>
+            <p className="text-sm">Deadline: {moment(deadline).format("MM/DD/YYYY")}</p>
+            <p className="text-sm">Comments: {comments}</p>
+            <p className="text-sm">{moment(time).format("LT")}</p>
+          </div>
+        </div>
       </div>
-
-      <div className="mt-auto">
+      <div className="flex space-x-2">
         <button
-          onClick={() => updateTodo(id)}
-          className="bg-green-500 text-white text-sm font-bold rounded-lg p-2 hover:scale-110 transition-all duration-200 ease-in-out ml-3"
+          onClick={() => updateTodo(id)} // Ensure this is defined
+          className="bg-blue-600 text-white rounded p-2 flex items-center"
         >
-          Update
+          <FaEdit className="mr-1" /> Edit
         </button>
         <button
           onClick={() => deleteTodo(id)}
-          className="bg-red-500 text-white text-sm font-bold rounded-lg p-2 hover:scale-110 transition-all duration-200 ease-in-out ml-3"
+          className="bg-red-600 text-white rounded p-2 flex items-center"
         >
-          Delete
+          <FaTrash className="mr-1" /> Delete
         </button>
       </div>
     </div>

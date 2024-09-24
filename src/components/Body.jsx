@@ -10,103 +10,113 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
-
-function AddTodoModal({ open, onClose, onAddTodo }) {
-  const [input, setInput] = useState(""); // Tilamuuttuja syötekentän arvon seuraamiseksi
-
-  const handleAddTodo = () => {
-    const sanitizedInput = input.replace(/[^a-zA-Z0-9 ]/g, ''); // Poistetaan kaikki muut paitsi kirjaimet ja numerot
-
-    if (!sanitizedInput.trim()) { // Tarkistetaan, onko syötekenttä tyhjä
-      alert("Todo cannot be empty"); // Ilmoitetaan käyttäjälle, jos syötekenttä on tyhjä
-      return;
-    }
-
-    onAddTodo(sanitizedInput); // Lähetetään uusi tehtävä vanhemmalle komponentille
-    setInput(""); // Tyhjennetään syötekenttä
-    onClose(); // Suljetaan lisää tehtävä -modaali
-  };
-
-  return (
-    <div className={`fixed top-0 left-0 right-0 bottom-0 flex items-center justify-center bg-gray-900 bg-opacity-50 ${open ? "" : "hidden"}`}>
-      <div className="bg-white p-8 rounded-lg">
-        <h2 className="text-2xl font-bold mb-4">Add Todo</h2>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)} // Päivitetään syötettä muutoksen yhteydessä
-          type="text"
-          placeholder="Todo name"
-          maxLength={50}
-          className="border p-2 w-full outline-none rounded-lg"
-        />
-        <div className="flex justify-end mt-4">
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-800 mr-2">Cancel</button>
-          <button onClick={handleAddTodo} className="bg-green-500 p-3 text-white font-bold rounded-lg hover:scale-110 transition-all duration-200 ease-in-out">Add</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import Tabs from "./Tabs";
+import moment from "moment";
+import AddTodoModal from "./AddTodoModal";
 
 function Body() {
-  const [addTodoModal, setAddTodoModal] = useState(false); // Tilamuuttuja modaalin tilan seuraamiseksi
-  const [todos, setTodos] = useState([]); // Tilamuuttuja tehtävälistan seuraamiseksi
-  const [user] = useAuthState(auth); // Kirjautuneen käyttäjän tila
+  const [activeTab, setActiveTab] = useState("Today");
+  const [todos, setTodos] = useState([]);
+  const [user] = useAuthState(auth);
+  const [addTodoModal, setAddTodoModal] = useState(false);
 
-  const addTodo = async (todoName) => {
+  const addTodo = async ({ title, priority, deadline, comments }) => {
     try {
       await addDoc(collection(db, `user/${user?.uid}/todos`), {
-        todoName: todoName,
+        title,
+        priority,
+        deadline: new Date(deadline),
+        comments,
         status: false,
         time: serverTimestamp(),
       });
-      alert("Todo Added"); // Ilmoitetaan käyttäjälle, että tehtävä on lisätty onnistuneesti
+      alert("Todo Added");
     } catch (err) {
-      console.error("Error adding todo: ", err); // Kirjataan virhe konsoliin
-      alert(err.message); // Näytetään virheilmoitus käyttäjälle
+      console.error("Error adding todo: ", err);
+      alert(err.message);
+    }
+  };
+
+  const updateTodo = async (id, newTitle) => {
+    try {
+      await updateDoc(doc(db, `user/${user.uid}/todos/${id}`), {
+        title: newTitle,
+      });
+      alert("Todo Updated");
+    } catch (err) {
+      alert(err.message);
     }
   };
 
   useEffect(() => {
-    onSnapshot(
+    const unsubscribe = onSnapshot(
       query(collection(db, `user/${user?.uid}/todos`), orderBy("time", "desc")),
       (snapshot) => {
         setTodos(
           snapshot.docs.map((doc) => ({
             id: doc.id,
-            todoName: doc.data().todoName,
+            title: doc.data().title,
+            priority: doc.data().priority,
+            deadline: doc.data().deadline,
+            comments: doc.data().comments,
             time: doc.data().time,
             status: doc.data().status,
           }))
         );
       }
     );
+
+    return () => unsubscribe();
   }, [user]);
 
-  return (
-    <div>
-      <div className="flex items-center justify-between p-5">
-        <h1 className="text-3xl font-bold">Today</h1>
-        <button
-          onClick={() => setAddTodoModal(true)}
-          className="bg-green-500 p-3 text-white text-sm font-bold rounded-lg hover:scale-110 transition-all duration-200 ease-in-out"
-        >
-          Add Todo
-        </button>
-      </div>
+  const filteredTodos = todos.filter((todo) => {
+    if (!todo.time) return false;
 
-      {/* Tehtävät */}
-      <div className="overflow-auto max-w-screen-md mx-auto"> {/* Lisätty scrollaus, kun tehtävämäärä ylittää näytön leveyden */}
-        {todos?.map((todo) => (
+    if (activeTab === "Today") {
+      return moment(todo.time.toDate()).isSame(moment(), "day");
+    } else if (activeTab === "Pending") {
+      return !todo.status;
+    } else if (activeTab === "Overdue") {
+      return moment(todo.time.toDate()).isBefore(moment()) && !todo.status;
+    }
+    return true;
+  });
+
+  const priorityOrder = {
+    high: 1,
+    medium: 2,
+    low: 3,
+  };
+
+  const sortedTodos = filteredTodos.sort((a, b) => {
+    return priorityOrder[a.priority] - priorityOrder[b.priority];
+  });
+
+  return (
+    <div className="p-6 bg-white rounded-lg shadow-lg mt-6">
+      <Tabs onTabChange={setActiveTab} />
+      <h2 className="text-2xl font-bold mb-4">Tasks</h2>
+      <div className="overflow-auto max-w-screen-md mx-auto">
+        {sortedTodos.map((todo) => (
           <TodoCard
             key={todo.id}
             id={todo.id}
-            todoName={todo?.todoName}
+            title={todo.title}
+            priority={todo.priority}
+            deadline={todo.deadline}
+            comments={todo.comments}
             time={todo.time?.toDate().getTime()}
-            status={todo?.status}
+            status={todo.status}
+            updateTodo={updateTodo} // Pass the updateTodo function
           />
         ))}
       </div>
+      <button
+        onClick={() => setAddTodoModal(true)}
+        className="bg-green-500 text-white rounded p-2 mt-4 w-full"
+      >
+        + Add Task
+      </button>
 
       <AddTodoModal
         open={addTodoModal}
